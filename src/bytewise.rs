@@ -1189,7 +1189,10 @@ impl<V> DoubleArrayAhoCorasick<V> {
 
     /// Returns the (length, value) for an output position.
     /// `output_pos` comes from `state_output_pos()`.
-    pub fn output_at(&self, output_pos: NonZeroU32) -> (u32, V) {
+    pub fn output_at(&self, output_pos: NonZeroU32) -> (u32, V)
+    where
+        V: Copy,
+    {
         let out = unsafe {
             self.outputs
                 .get_unchecked(usize::from_u32(output_pos.get() - 1))
@@ -1198,7 +1201,10 @@ impl<V> DoubleArrayAhoCorasick<V> {
     }
 
     /// Returns the parent output position (for overlapping matches).
-    pub fn output_parent(&self, output_pos: NonZeroU32) -> Option<NonZeroU32> {
+    pub fn output_parent(&self, output_pos: NonZeroU32) -> Option<NonZeroU32>
+    where
+        V: Copy,
+    {
         let out = unsafe {
             self.outputs
                 .get_unchecked(usize::from_u32(output_pos.get() - 1))
@@ -1219,6 +1225,9 @@ pub struct ClamavFastScanner<'a, V> {
     pma: &'a DoubleArrayAhoCorasick<V>,
     /// Flat dense transition table: `dense[state * 256 + byte]` = next state id.
     pub(crate) dense: Vec<u32>,
+}
+
+impl<V> ClamavFastScanner<'_, V> {
     /// Returns the dense transition table (ClamAV-style).
     pub fn dense_table(&self) -> &[u32] {
         &self.dense
