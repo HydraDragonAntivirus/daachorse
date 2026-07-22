@@ -176,6 +176,75 @@ where
     }
 }
 
+/// Iterator created by [`ClamavFastScanner::find_iter()`].
+///
+/// Uses a ClamAV-style dense transition table — one indexed array access per byte.
+pub struct ClamavFindIterator<'a, P, V> {
+    pub(crate) pma: &'a DoubleArrayAhoCorasick<V>,
+    pub(crate) dense: &'a [u32],
+    pub(crate) haystack: P,
+    pub(crate) state_id: u32,
+    pub(crate) pos: usize,
+    pub(crate) output_pos: Option<NonZeroU32>,
+}
+
+impl<P, V> Iterator for ClamavFindIterator<'_, P, V>
+where
+    P: AsRef<[u8]>,
+    V: Copy,
+{
+    type Item = Match<V>;
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        // Yield multiple matches ending at the current position (overlapping).
+        if let Some(output_pos) = self.output_pos {
+            let out = unsafe {
+                self.pma
+                    .outputs
+                    .get_unchecked(usize::from_u32(output_pos.get() - 1))
+            };
+            self.output_pos = out.parent();
+            return Some(Match {
+                length: usize::from_u32(out.length()),
+                end: self.pos,
+                value: out.value(),
+            });
+        }
+        let haystack = self.haystack.as_ref();
+        let len = haystack.len();
+        while self.pos < len {
+            let c = haystack[self.pos];
+            // ── ONE array lookup per byte (ClamAV-style dense table) ─────
+            self.state_id = unsafe {
+                *self
+                    .dense
+                    .get_unchecked(self.state_id as usize * 256 + c as usize)
+            };
+            self.pos += 1;
+            if let Some(output_pos) = unsafe {
+                self.pma
+                    .states
+                    .get_unchecked(usize::from_u32(self.state_id))
+                    .output_pos()
+            } {
+                let out = unsafe {
+                    self.pma
+                        .outputs
+                        .get_unchecked(usize::from_u32(output_pos.get() - 1))
+                };
+                self.output_pos = out.parent();
+                return Some(Match {
+                    length: usize::from_u32(out.length()),
+                    end: self.pos,
+                    value: out.value(),
+                });
+            }
+        }
+        None
+    }
+}
+
 /// Iterator created by [`DoubleArrayAhoCorasick::find_overlapping_no_suffix_iter()`].
 pub struct FindOverlappingNoSuffixIterator<'a, P, V> {
     pub(crate) pma: &'a DoubleArrayAhoCorasick<V>,

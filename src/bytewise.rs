@@ -12,8 +12,8 @@ use alloc::vec::Vec;
 use crate::build_helper::BuildHelper;
 pub use crate::bytewise::builder::DoubleArrayAhoCorasickBuilder;
 use crate::bytewise::iter::{
-    FindIterator, FindOverlappingIterator, FindOverlappingNoSuffixIterator, FindOverlappingStepper,
-    FindStepper, LeftmostFindIterator, U8SliceIterator,
+    ClamavFindIterator, FindIterator, FindOverlappingIterator, FindOverlappingNoSuffixIterator,
+    FindOverlappingStepper, FindStepper, LeftmostFindIterator, U8SliceIterator,
 };
 use crate::errors::{DaachorseError, Result};
 use crate::intpack::{U24nU8, U24};
@@ -1124,6 +1124,81 @@ impl<V> DoubleArrayAhoCorasick<V> {
 
             // Follow the failure transition to the next candidate state.
             state_id = fail_id;
+        }
+    }
+
+    /// Builds a ClamAV-style dense transition table.
+    ///
+    /// For each (state, byte) pair, this pre-computes the final state after following all
+    /// failure links, storing the result in `dense[state * 256 + byte]`.
+    /// At match time, a single indexed access `dense[state * 256 + byte]` gives the next state.
+    fn build_dense_table(&self) -> Vec<u32> {
+        let num_states = self.states.len();
+        let mut table = alloc::vec![0u32; num_states * 256];
+        for s in 0..num_states {
+            let base = s * 256;
+            for c in 0..=255u8 {
+                let next = unsafe { self.next_state_id_unchecked(s as u32, c) };
+                table[base + usize::from(c)] = next;
+            }
+        }
+        table
+    }
+
+    /// Creates a [`ClamavFastScanner`] from this automaton.
+    ///
+    /// The returned scanner uses a dense transition table for one-lookup-per-byte matching.
+    ///
+    /// Panics if this automaton was built with leftmost match kind (standard only).
+    #[must_use]
+    pub fn clamav_fast(&self) -> ClamavFastScanner<'_, V> {
+        assert!(
+            self.match_kind.is_standard(),
+            "clamav_fast requires match_kind::Standard"
+        );
+        let dense = self.build_dense_table();
+        ClamavFastScanner { pma: self, dense }
+    }
+}
+
+/// A fast Aho-Corasick scanner using a ClamAV-style dense transition table.
+///
+/// For each state and each of the 256 byte values, the transition to the next state
+/// (including failure-link compression) is pre-computed into a flat `[state * 256 + byte]` table.
+/// At match time, a single indexed access gives the next state — no XOR, no check verification,
+/// no failure-link loop.
+///
+/// Memory: `num_states × 256 × 4` bytes (e.g., ~5 MB for 5 000 states).
+pub struct ClamavFastScanner<'a, V> {
+    pma: &'a DoubleArrayAhoCorasick<V>,
+    /// Flat dense transition table: `dense[state * 256 + byte]` = next state id.
+    pub(crate) dense: Vec<u32>,
+}
+
+impl<V> ClamavFastScanner<'_, V>
+where
+    V: Copy,
+{
+    /// Returns an iterator of overlapping matches in the given haystack.
+    ///
+    /// Each byte consumed performs exactly **one** array lookup: `state = dense[state * 256 + byte]`.
+    #[inline(always)]
+    pub fn find_iter<P>(&self, haystack: P) -> ClamavFindIterator<'_, P, V>
+    where
+        P: AsRef<[u8]>,
+    {
+        ClamavFindIterator {
+            pma: self.pma,
+            dense: &self.dense,
+            haystack,
+            state_id: ROOT_STATE_IDX,
+            pos: 0,
+            output_pos: unsafe {
+                self.pma
+                    .states
+                    .get_unchecked(usize::from_u32(ROOT_STATE_IDX))
+                    .output_pos()
+            },
         }
     }
 }

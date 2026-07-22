@@ -204,7 +204,7 @@ use core::num::NonZeroU32;
 use alloc::vec::Vec;
 
 use crate::build_helper::BuildHelper;
-pub use crate::bytewise::{DoubleArrayAhoCorasick, DoubleArrayAhoCorasickBuilder};
+pub use crate::bytewise::{ClamavFastScanner, DoubleArrayAhoCorasick, DoubleArrayAhoCorasickBuilder};
 pub use crate::charwise::{CharwiseDoubleArrayAhoCorasick, CharwiseDoubleArrayAhoCorasickBuilder};
 use crate::errors::DaachorseError;
 pub use crate::errors::Result;
