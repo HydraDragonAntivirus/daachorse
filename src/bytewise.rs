@@ -1132,7 +1132,7 @@ impl<V> DoubleArrayAhoCorasick<V> {
     /// For each (state, byte) pair, this pre-computes the final state after following all
     /// failure links, storing the result in `dense[state * 256 + byte]`.
     /// At match time, a single indexed access `dense[state * 256 + byte]` gives the next state.
-    fn build_dense_table(&self) -> Vec<u32> {
+    pub fn build_dense_table(&self) -> Vec<u32> {
         let num_states = self.states.len();
         let mut table = alloc::vec![0u32; num_states * 256];
         for s in 0..num_states {
@@ -1169,6 +1169,42 @@ impl<V> DoubleArrayAhoCorasick<V> {
     pub fn raw_outputs(&self) -> &[Output<V>] {
         &self.outputs
     }
+
+    /// Returns the output_pos for the given state, if it's a match state.
+    pub fn state_output_pos(&self, state_id: u32) -> Option<NonZeroU32> {
+        if state_id == ROOT_STATE_IDX {
+            unsafe {
+                self.states
+                    .get_unchecked(usize::from_u32(ROOT_STATE_IDX))
+                    .output_pos()
+            }
+        } else {
+            unsafe {
+                self.states
+                    .get_unchecked(usize::from_u32(state_id))
+                    .output_pos()
+            }
+        }
+    }
+
+    /// Returns the (length, value) for an output position.
+    /// `output_pos` comes from `state_output_pos()`.
+    pub fn output_at(&self, output_pos: NonZeroU32) -> (u32, V) {
+        let out = unsafe {
+            self.outputs
+                .get_unchecked(usize::from_u32(output_pos.get() - 1))
+        };
+        (out.length(), out.value())
+    }
+
+    /// Returns the parent output position (for overlapping matches).
+    pub fn output_parent(&self, output_pos: NonZeroU32) -> Option<NonZeroU32> {
+        let out = unsafe {
+            self.outputs
+                .get_unchecked(usize::from_u32(output_pos.get() - 1))
+        };
+        out.parent()
+    }
 }
 
 /// A fast Aho-Corasick scanner using a ClamAV-style dense transition table.
@@ -1183,6 +1219,10 @@ pub struct ClamavFastScanner<'a, V> {
     pma: &'a DoubleArrayAhoCorasick<V>,
     /// Flat dense transition table: `dense[state * 256 + byte]` = next state id.
     pub(crate) dense: Vec<u32>,
+    /// Returns the dense transition table (ClamAV-style).
+    pub fn dense_table(&self) -> &[u32] {
+        &self.dense
+    }
 }
 
 impl<V> ClamavFastScanner<'_, V>
