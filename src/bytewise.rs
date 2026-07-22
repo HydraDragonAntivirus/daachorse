@@ -1159,6 +1159,16 @@ impl<V> DoubleArrayAhoCorasick<V> {
         let dense = self.build_dense_table();
         ClamavFastScanner { pma: self, dense }
     }
+
+    /// Returns the underlying states vector (for custom match loops).
+    pub fn raw_states(&self) -> &[State<u32>] {
+        &self.states
+    }
+
+    /// Returns the underlying outputs vector.
+    pub fn raw_outputs(&self) -> &[Output<V>] {
+        &self.outputs
+    }
 }
 
 /// A fast Aho-Corasick scanner using a ClamAV-style dense transition table.
