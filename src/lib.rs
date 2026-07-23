@@ -207,7 +207,7 @@ use alloc::vec::Vec;
 use crate::build_helper::BuildHelper;
 pub use crate::bytewise::{ClamavFastScanner, DoubleArrayAhoCorasick, DoubleArrayAhoCorasickBuilder};
 pub use crate::charwise::{CharwiseDoubleArrayAhoCorasick, CharwiseDoubleArrayAhoCorasickBuilder};
-pub use crate::clamav_prefilter::ClamavPrefilter;
+pub use crate::clamav_prefilter::{ClamavMultilevelPrefilter, ClamavPrefilter};
 use crate::errors::DaachorseError;
 pub use crate::errors::Result;
 pub use crate::serializer::Serializable;
