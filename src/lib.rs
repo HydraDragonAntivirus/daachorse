@@ -192,6 +192,7 @@ extern crate alloc;
 mod build_helper;
 pub mod bytewise;
 pub mod charwise;
+pub mod clamav_fast;
 pub mod clamav_prefilter;
 mod edge_map;
 pub mod errors;
