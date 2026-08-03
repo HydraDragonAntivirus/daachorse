@@ -1142,19 +1142,24 @@ impl<V> DoubleArrayAhoCorasick<V> {
         table
     }
 
-    /// Creates a [`ClamavFastScanner`] from this automaton.
+    /// Creates a [`ClamavFastScanner`] from a dense transition table built by
+    /// [`DoubleArrayAhoCorasick::build_dense_table`].
     ///
-    /// The returned scanner uses a dense transition table for one-lookup-per-byte matching.
+    /// The scanner performs one-lookup-per-byte matching. It borrows `dense`,
+    /// so a single prebuilt table can be reused across many scans/buffers.
     ///
-    /// Panics if this automaton was built with leftmost match kind (standard only).
+    /// Panics if this automaton was built with a leftmost match kind
+    /// (standard only).
     #[must_use]
-    pub fn clamav_fast(&self) -> ClamavFastScanner<'_, V> {
+    pub fn clamav_fast<'d>(&'d self, dense: &'d [u32]) -> ClamavFastScanner<'d, V>
+    where
+        V: Copy,
+    {
         assert!(
             self.match_kind.is_standard(),
             "clamav_fast requires match_kind::Standard"
         );
-        let dense = self.build_dense_table();
-        ClamavFastScanner { pma: self, dense }
+        ClamavFastScanner::from_dense(self, dense)
     }
 
     /// Returns the underlying states vector (for custom match loops).
@@ -1221,13 +1226,27 @@ impl<V> DoubleArrayAhoCorasick<V> {
 pub struct ClamavFastScanner<'a, V> {
     pma: &'a DoubleArrayAhoCorasick<V>,
     /// Flat dense transition table: `dense[state * 256 + byte]` = next state id.
-    pub(crate) dense: Vec<u32>,
+    dense: &'a [u32],
 }
 
-impl<V> ClamavFastScanner<'_, V> {
+impl<'a, V> ClamavFastScanner<'a, V> {
+    /// Builds a [`ClamavFastScanner`] over an existing dense transition table.
+    ///
+    /// `dense` must have been produced by [`DoubleArrayAhoCorasick::build_dense_table`]
+    /// for this same automaton. Because the table is borrowed, one prebuilt table
+    /// can be shared by many scanners / scans.
+    #[must_use]
+    pub fn from_dense(pma: &'a DoubleArrayAhoCorasick<V>, dense: &'a [u32]) -> Self {
+        assert!(
+            pma.match_kind.is_standard(),
+            "ClamavFastScanner requires match_kind::Standard"
+        );
+        Self { pma, dense }
+    }
+
     /// Returns the dense transition table (ClamAV-style).
     pub fn dense_table(&self) -> &[u32] {
-        &self.dense
+        self.dense
     }
 }
 
@@ -1245,7 +1264,7 @@ where
     {
         ClamavFindIterator {
             pma: self.pma,
-            dense: &self.dense,
+            dense: self.dense,
             haystack,
             state_id: ROOT_STATE_IDX,
             pos: 0,
